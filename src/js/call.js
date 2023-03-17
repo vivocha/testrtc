@@ -316,3 +316,68 @@ Call.fetchTurnConfig_ = function(onSuccess, onError) {
   xhr.open('POST', TURN_URL + API_KEY, true);
   xhr.send();
 };
+
+// Get Turn server credentials from Vivocha
+Call.fetchTurnConfig_ = function(onSuccess, onError) {
+  // TODO get default config from Gruntfile.js
+  const searchParams = new URLSearchParams(location.search);
+  for (const [key, value] of searchParams.entries()) {
+    console.log(`app parameter => ${key}: ${value}`);
+  }
+  const parWorld = searchParams.get('world');
+  const parDomain = searchParams.get('domain');
+  const vvcWorld = parWorld || "i1";
+  const vvcDomain = parDomain || ".vivocha.com";
+  const vvcHost = `${vvcWorld}${vvcDomain}`;
+  const vvcAccount = searchParams.get('acct_id'); // GET value from query string or param
+  const vvcTokenURL = `https://${vvcHost}/a/${vvcAccount}/api/v3/token`; // retrieve world or get it from query string
+  const vvcConfigURL = searchParams.get('cfgurl') || `https://34or20f15l.execute-api.eu-central-1.amazonaws.com/dev/config`; // use default config url from lambda but leave the possibility to override it from querystring param
+
+  fetch(vvcTokenURL, { credentials: 'include', mode: 'cors', redirect: 'follow' }).then(function (response) {
+    if (response.status !== 200) {
+      return response.text();
+    } else {
+      return response.json();
+    }
+  }).then(function (bodyParsed) {
+    console.log('token body', bodyParsed);
+    if (typeof bodyParsed === 'string') {
+      throw new Error(bodyParsed);
+    } else {
+      const vvcToken = bodyParsed.token;
+      const url = new URL(vvcConfigURL);
+      url.searchParams.set('token', vvcToken);
+      url.searchParams.set('acct_id', vvcAccount);
+      if (parWorld) {
+        url.searchParams.set('world', parWorld);
+      }
+      if (parDomain) {
+        url.searchParams.set('domain', parDomain);
+      }
+      console.log('config url', url);
+      for (const [key, value] of url.searchParams.entries()) {
+        console.log(`config parameter => ${key}: ${value}`);
+      }
+      fetch(url).then(function (response) {
+        if (response.status !== 200) {
+          return response.text();
+        } else {
+          return response.json();
+        }
+      }).then(function (iceconfig) {
+        console.log(iceconfig);
+        if (typeof iceconfig === 'string') {
+          throw new Error(iceconfig);
+        } else {
+          onSuccess(iceconfig);
+        }
+      }).catch(function (e) {
+        console.error(e);
+        onError(e.message);
+      })
+    }
+  }).catch(function (e) {
+    console.error(e);
+    onError(e.message);
+  });
+}
